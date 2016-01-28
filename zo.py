@@ -216,7 +216,7 @@ def filename_to_bibnick(filename):
 def find_pdf_from_bibnick(bibnick, directory):
     for root, dirnames, filenames in walk(directory):
         for filename in filenames:
-            if bibnick in filename:
+            if bibnick in filename and filename.endswith(".pdf"):
                 return os.path.abspath(os.path.join(root, filename))
 
 
