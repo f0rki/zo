@@ -1,13 +1,20 @@
 #!/usr/bin/env python
-import fnmatch
-import warnings
+from __future__ import print_function
+
 import argparse
-import subprocess
+import fnmatch
+import logging
 import os
-from os import walk, path, getenv, system
 import re
+import subprocess
+import warnings
+
+from os import path, system, walk
 
 import bibtexparser
+
+
+logging.basicConfig(loglevel=logging.WARNING)
 
 
 NOTE_FORMAT = "md"
@@ -15,6 +22,7 @@ REFREPO = os.path.join(os.getenv("HOME"), "refs")
 DEFAULT_BIBFILE = "refs.bib"
 
 NOTE_FILE_TEMPLATE = """# Notes about {bibnick}
+
 title: {title}
 author: {author}
 year: {year}
@@ -112,6 +120,20 @@ def sanitize(s):
     return s
 
 
+def bib_entries_for(bib, bibnicks):
+    bib_database = None
+    with open(bib) as bibtex_file:
+        bib_database = bibtexparser.load(bibtex_file)
+    results = {}
+    if bib_database is not None:
+        for bibnick in bibnicks:
+            if bibnick in bib_database.entries_dict:
+                entry = bib_database.entries_dict[bibnick]
+                results[bibnick] = {what: sanitize(entry[what])
+                                    for what in entry.keys()}
+    return results
+
+
 def bib_lookup(bib, bibnick, what):
     bib_database = None
     with open(bib) as bibtex_file:
@@ -201,7 +223,8 @@ def find_pdfs(directory):
     files = []
     for root, dirnames, filenames in walk(directory):
         for filename in fnmatch.filter(filenames, '*.pdf'):
-            files.append(filename.split(".")[0])
+            if "__ignore" not in filename:
+                files.append(".".join(filename.split(".")[:-1]))
 
     return files
 
@@ -220,14 +243,18 @@ def find_pdf_from_bibnick(bibnick, directory):
                 return os.path.abspath(os.path.join(root, filename))
 
 
-def _printer(things, msg):
-    out = ""
-    if len(things) > 0:
-        out += msg + "\n"
-        out += "=" * len(msg) + "\n"
-        for i, thing in enumerate(sorted(things)):
-            out += "{0}. {1}\n".format(i + 1, thing)
-    return out
+def print_list(things, msg, errmsg=None):
+    print(msg)
+    print("=" * len(msg))
+    if things and len(things) > 0:
+        for i, thing in enumerate(things):
+            print("{}. {}".format(i + 1, thing))
+    else:
+        if errmsg:
+            print(errmsg)
+        else:
+            print()
+    print()
 
 
 def make(project, parent, child):
@@ -239,11 +266,10 @@ def make(project, parent, child):
     with open(child, 'a') as f:
         f.write(append_string)
 
-    out = _printer(added_refs,
-                   "\nThe following refs were added to the local refs.bib:")
-    out += _printer(missing_refs,
-                    "\nRefs not in parent and NOT added to the local refs.bib:")
-    print(out)
+    print_list(added_refs,
+               "\nThe following refs were added to the local refs.bib:")
+    print_list(missing_refs,
+               "\nRefs not in parent and NOT added to the local refs.bib:")
 
 
 def status():
@@ -253,10 +279,9 @@ def status():
     bnt = bib_nicks_titles(bib)
     x = ["[{}] {}".format(nick, bnt[nick])
          for nick in files & refs if nick in bnt]
-    out = _printer(x, "Files that are good to go:")
-    out += _printer(files - refs, "\nFiles missing .bib entries:")
-    out += _printer(refs - files, "\n.bib entries missing files:")
-    print(out)
+    print_list(x, "Files that are good to go:")
+    print_list(files - refs, "\nFiles missing .bib entries:")
+    print_list(refs - files, "\n.bib entries missing files:")
 
 
 def grep(repo, args):
@@ -345,10 +370,17 @@ def search(searchstring):
     authors = search_for("author", searchstring)
     titles = search_for("title", searchstring)
     results = files | authors | titles
-    bnt = bib_nicks_titles(bib)
-    x = ["[{}] {}".format(nick, bnt[nick])
+    bnt = bib_entries_for(bib, results)
+    results = sorted(results,
+                     key=(lambda x: bnt[x]['year']
+                                    if x in bnt and 'year' in bnt[x]
+                                    else 0))
+    x = ["[{}] {}".format(nick, bnt[nick]['title'])
          for nick in results if nick in bnt]
-    out = _printer(x, "Search results:")
+    # import ipdb
+    # ipdb.set_trace()
+    # ipdb.interact()
+    out = print_list(x, "Search results:")
     print(out)
 
 
